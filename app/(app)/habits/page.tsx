@@ -59,6 +59,7 @@ export default function HabitsPage() {
           </div>
           <div className="meta">
             <span>{h.weeklyTarget}/wk</span>
+            <span>{h.inputType === "CHECK" ? "checkbox" : h.inputType === "TEXT" ? "text" : `${h.multiSelect ? "multi-select" : "dropdown"} · ${h.options.length} option${h.options.length === 1 ? "" : "s"}`}</span>
             <span>since {fmtShort(h.startDate)}</span>
             {h.isPrivate && !discreet && <span>shown as “{h.alias}”</span>}
           </div>

@@ -1,13 +1,13 @@
 // Parses a Notion database CSV export shaped like:
 //   Date | Academics/仕事 | スポーツ | ... | Total
-// Dated rows → one entry per non-empty cell (the cell text becomes the note).
+// Dated rows → one entry per non-empty cell (the cell text is kept: as the text, the dropdown option, or the note).
 // Undated rows holding "0/5"-style values → used to detect each column's weekly target.
 // A cell reading 休日 / rest / off → the whole day is marked as a rest day.
 
 export interface ParsedImport {
   dateColumn: string;
-  habits: { name: string; weeklyTarget: number; kind: "BUILD" | "AVOID"; logged: number }[];
-  entries: { habit: string; date: string; note: string }[];
+  habits: { name: string; weeklyTarget: number; kind: "BUILD" | "AVOID"; inputType: "CHECK" | "SELECT" | "TEXT"; logged: number; distinct: number }[];
+  entries: { habit: string; date: string; text: string }[];
   restDays: string[];
   skippedRows: number;
 }
@@ -86,19 +86,27 @@ export function parseNotion(text: string): ParsedImport {
       const v = (r[c.i] ?? "").trim();
       if (!v || POINTS.test(v)) continue;
       if (REST.test(v)) { rest.add(date); continue; }
-      entries.push({ habit: c.h, date, note: v.slice(0, 2000) });
+      entries.push({ habit: c.h, date, text: v.slice(0, 2000) });
       logged.set(c.h, (logged.get(c.h) ?? 0) + 1);
     }
   }
 
   return {
     dateColumn: header[dateIdx],
-    habits: cols.map((c) => ({
-      name: c.h.slice(0, 80),
-      weeklyTarget: targets.get(c.h) ?? 7,
-      kind: /fuck ?ups?|slips?|relapse|失敗/i.test(c.h) ? "AVOID" : "BUILD",
-      logged: logged.get(c.h) ?? 0,
-    })),
+    habits: cols.map((c) => {
+      const texts = entries.filter((e) => e.habit === c.h).map((e) => e.text.toLowerCase());
+      const distinct = new Set(texts).size;
+      // few distinct short values repeated across many days look like a dropdown; otherwise keep free text
+      const looksLikeSelect = texts.length >= 6 && distinct <= 8 && distinct <= texts.length / 3 && texts.every((t) => t.length <= 40);
+      return {
+        name: c.h.slice(0, 80),
+        weeklyTarget: targets.get(c.h) ?? 7,
+        kind: /fuck ?ups?|slips?|relapse|失敗/i.test(c.h) ? ("AVOID" as const) : ("BUILD" as const),
+        inputType: looksLikeSelect ? ("SELECT" as const) : ("TEXT" as const),
+        logged: logged.get(c.h) ?? 0,
+        distinct,
+      };
+    }),
     entries,
     restDays: [...rest].sort(),
     skippedRows: skipped,

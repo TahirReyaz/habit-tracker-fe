@@ -1,5 +1,5 @@
 import { todayIso } from "./dates";
-import type { Day, Entry, Habit, HabitKind, Me, StatsResponse, Week } from "./types";
+import type { Day, Entry, Habit, HabitKind, InputType, Me, StatsResponse, Week } from "./types";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -58,11 +58,22 @@ export interface HabitInput {
   name?: string;
   alias?: string;
   kind?: HabitKind;
+  inputType?: InputType;
+  options?: string[];
+  /** old label → new label; rewrites past entries so history follows a renamed option */
+  optionRenames?: Record<string, string>;
+  multiSelect?: boolean;
   weeklyTarget?: number;
   isPrivate?: boolean;
   color?: string;
   startDate?: string;
   archived?: boolean;
+}
+
+export interface LogPayload {
+  value?: string | null;
+  values?: string[];
+  note?: string | null;
 }
 
 export const api = {
@@ -86,8 +97,13 @@ export const api = {
   deleteHabit: (id: string) => request<void>("DELETE", `/habits/${id}`),
 
   week: (date?: string) => request<Week>("GET", `/week?${t()}${date ? `&date=${date}` : ""}`),
-  log: (habitId: string, date: string, note: string | null) => request<Entry>("PUT", "/entries", { habitId, date, note }),
+  /** value: TEXT text; values: SELECT picks; note: CHECK/SELECT extra. Returns habit fields that logging can change. */
+  log: (habitId: string, date: string, p: LogPayload) =>
+    request<{ entry: Entry; options: string[]; startDate: string }>("PUT", "/entries", { habitId, date, ...p }),
   unlog: (habitId: string, date: string) => request<void>("DELETE", `/entries?habitId=${habitId}&date=${date}`),
+  /** target null = back to the usual weekly target. Returns the week rescored. */
+  setWeekTarget: (habitId: string, date: string, target: number | null) =>
+    request<Week>("PUT", `/week-targets?${t()}`, { habitId, date, target }),
   setDay: (date: string, d: { restDay?: boolean; note?: string }) => request<Day>("PUT", `/days/${date}`, d),
 
   stats: (weeks: number) => request<StatsResponse>("GET", `/stats?weeks=${weeks}&${t()}`),

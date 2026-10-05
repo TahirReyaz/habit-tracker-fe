@@ -98,7 +98,7 @@ export default function SettingsPage() {
             const data = await api.exportData();
             const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
             const a = document.createElement("a");
-            a.href = url; a.download = `tally-export-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+            a.href = url; a.download = `habit-tracker-export-${new Date().toISOString().slice(0, 10)}.json`; a.click();
             URL.revokeObjectURL(url);
           }}>Download export</button>
         </Row>
@@ -223,7 +223,7 @@ function ImportRow() {
     setBusy(true);
     try {
       const r = await api.importData({
-        habits: parsed.habits.map(({ name, weeklyTarget, kind }) => ({ name, weeklyTarget, kind })),
+        habits: parsed.habits.map(({ name, weeklyTarget, kind, inputType }) => ({ name, weeklyTarget, kind, inputType })),
         entries: parsed.entries,
         restDays: parsed.restDays,
       });
@@ -234,7 +234,7 @@ function ImportRow() {
   }
 
   return (
-    <Row title="Import from Notion" desc="In Notion: ••• → Export → Markdown & CSV, unzip, then pick the database .csv. Each filled cell becomes a logged day with the text as its note. 休日 cells mark rest days. “0/5” rows set weekly targets.">
+    <Row title="Import from Notion" desc="In Notion: ••• → Export → Markdown & CSV, unzip, then pick the database .csv. Each filled cell becomes a logged day. Text columns keep the cell text; dropdown columns turn each distinct value into an option; checkbox columns keep it as a note. 休日 cells mark rest days. “0/5” rows set weekly targets.">
       <label className="file-pick">
         <input type="file" accept=".csv,text/csv" onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ""; }} />
         <span className="btn" role="button">Choose CSV…</span>
@@ -248,7 +248,7 @@ function ImportRow() {
             {parsed.entries.length} entries · {parsed.restDays.length} rest days · date column “{parsed.dateColumn}”
           </div>
           <table className="data">
-            <thead><tr><th>Column</th><th className="r">Logged</th><th>Target</th><th>Type</th></tr></thead>
+            <thead><tr><th>Column</th><th className="r">Logged</th><th>Target</th><th>Type</th><th>Logged as</th></tr></thead>
             <tbody>
               {parsed.habits.map((h, i) => (
                 <tr key={h.name}>
@@ -263,6 +263,13 @@ function ImportRow() {
                     <select className="select" style={{ height: 28, width: 96 }} value={h.kind} onChange={(e) => setHabit(i, { kind: e.target.value as "BUILD" | "AVOID" })}>
                       <option value="BUILD">Build</option>
                       <option value="AVOID">Avoid</option>
+                    </select>
+                  </td>
+                  <td>
+                    <select className="select" style={{ height: 28, width: 110 }} value={h.inputType} onChange={(e) => setHabit(i, { inputType: e.target.value as "CHECK" | "SELECT" | "TEXT" })}>
+                      <option value="TEXT">Text</option>
+                      <option value="SELECT">Dropdown{h.distinct ? ` (${h.distinct})` : ""}</option>
+                      <option value="CHECK">Checkbox</option>
                     </select>
                   </td>
                 </tr>

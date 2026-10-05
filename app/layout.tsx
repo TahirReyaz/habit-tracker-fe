@@ -8,7 +8,7 @@ const jp = Noto_Sans_JP({ weight: ["400", "500", "700"], variable: "--font-jp", 
 
 // Deliberately neutral: the tab title never reveals what is being tracked.
 export const metadata: Metadata = {
-  title: "Tally",
+  title: "Habit Tracker",
   description: "Private weekly ledger",
   robots: { index: false, follow: false },
   icons: { icon: "/favicon.svg" },

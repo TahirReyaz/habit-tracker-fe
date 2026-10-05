@@ -10,7 +10,7 @@ import type { Habit, HabitStats, StatsResponse } from "@/lib/types";
 const RANGES = [4, 12, 26, 52];
 
 export default function StatsPage() {
-  const { me, label, colorOf } = useSession();
+  const { me, label, colorOf, discreet } = useSession();
   const [weeks, setWeeks] = useState(12);
   const [data, setData] = useState<StatsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -167,6 +167,41 @@ export default function StatsPage() {
               For AVOID habits, days = clean days and weekday bars show when slips happen.
             </p>
           </div>
+
+          {rows.some(({ h }) => h.inputType === "SELECT" && Object.keys(data.optionCounts?.[h.id] ?? {}).length > 0) && (
+            <div className="section">
+              <div className="section-head">
+                <h2 className="h2">Dropdown breakdown</h2>
+                <span className="label">days per option in range</span>
+              </div>
+              <div className="breakdowns">
+                {rows.filter(({ h }) => h.inputType === "SELECT").map(({ h }) => {
+                  const counts = Object.entries(data.optionCounts?.[h.id] ?? {});
+                  if (counts.length === 0) return null;
+                  const total = counts.reduce((a, [, n]) => a + n, 0);
+                  const max = Math.max(...counts.map(([, n]) => n));
+                  return (
+                    <div className="card" key={h.id}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                        <i className="swatch" style={{ background: colorOf(h) }} />
+                        <span style={{ fontWeight: 600 }}>{label(h)}</span>
+                        <span className="muted num" style={{ marginLeft: "auto", fontSize: 12 }}>{total} days</span>
+                      </div>
+                      <div className="hbars">
+                        {counts.map(([opt, n], i) => (
+                          <div className="hbar" key={opt} title={discreet ? undefined : `${opt}: ${n} (${Math.round((n / total) * 100)}%)`}>
+                            <span className="hbar-label">{discreet ? `Option ${i + 1}` : opt}</span>
+                            <span className="hbar-track"><i style={{ width: `${(n / max) * 100}%`, background: colorOf(h) }} /></span>
+                            <span className="num hbar-n">{n} <span className="muted">{Math.round((n / total) * 100)}%</span></span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -237,6 +272,16 @@ function buildInsights(data: StatsResponse, rows: { h: Habit; s: HabitStats }[],
   const streak = [...rows].filter((r) => !r.h.archived).sort((a, b) => b.s.currentWeekStreak - a.s.currentWeekStreak)[0];
   if (streak && streak.s.currentWeekStreak >= 2) {
     out.push(`${label(streak.h)} is on a ${streak.s.currentWeekStreak}-week streak${streak.s.currentWeekStreak >= streak.s.longestWeekStreak ? " — your longest yet" : ` (best: ${streak.s.longestWeekStreak})`}.`);
+  }
+
+  for (const r of rows.filter((x) => x.h.inputType === "SELECT" && !x.h.archived)) {
+    const counts = Object.entries(data.optionCounts?.[r.h.id] ?? {});
+    const total = counts.reduce((a, [, n]) => a + n, 0);
+    if (counts.length >= 2 && total >= 5 && !(r.h.isPrivate)) {
+      const [top, n] = counts[0];
+      out.push(`${label(r.h)}: “${top}” is your go-to (${Math.round((n / total) * 100)}% of ${total} days), out of ${counts.length} options used.`);
+      break;
+    }
   }
 
   if (st.restDays > 0 && st.weeks.length >= 4) {

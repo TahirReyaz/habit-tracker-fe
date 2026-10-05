@@ -63,3 +63,9 @@ export function weekNumber(s: string): number {
 export function pct(n: number): string {
   return `${Math.round(n * 100)}%`;
 }
+
+/** First day of the week containing `s`, for a week starting on ISO weekday `isoWeekStart` (1 = Mon, 7 = Sun). */
+export function weekStartOf(s: string, isoWeekStart: number): string {
+  const back = (isoDow(s) - isoWeekStart + 7) % 7;
+  return addDays(s, -back);
+}

@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------
-   Tally — ledger aesthetic: hairlines, square edges, mono numerals.
+   Habit Tracker — ledger aesthetic: hairlines, square edges, mono numerals.
    No radius anywhere, no blur, no translucency.
 ------------------------------------------------------------------- */
 
@@ -432,3 +432,49 @@ table.data { width: 100%; border-collapse: collapse; }
 @media (max-width: 1000px) {
   .data .hide-md { display: none; }
 }
+
+/* ---------- option picker (SELECT habits) ---------- */
+.optgrid { display: flex; flex-wrap: wrap; gap: 6px; }
+.optgrid button {
+  min-height: 34px; padding: 6px 12px; background: var(--bg); border: 1px solid var(--line-strong);
+  cursor: pointer; font-size: 13px; text-align: left; max-width: 100%;
+}
+.optgrid button:hover:not(:disabled) { border-color: var(--text-2); }
+.optgrid button[aria-checked="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
+.cell-value { font-size: 12px; line-height: 1.35; font-weight: 600; display: inline-block; border: 1px solid color-mix(in srgb, var(--hc) 55%, var(--line-strong)); padding: 1px 6px; margin-bottom: 3px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cell-stack { display: grid; gap: 2px; min-width: 0; align-content: start; }
+.opt-editor { display: grid; gap: 6px; }
+.opt-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+.opt-row .btn { height: 36px; border-left: 0; }
+.tick.tick-text:not(.on) { border-style: dashed; }
+.tick.tick-select:not(.on)::after { content: ""; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid var(--muted); }
+.breakdowns { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.hbars { display: grid; gap: 8px; }
+.hbar { display: grid; grid-template-columns: minmax(0, 9em) minmax(0, 1fr) 70px; gap: 10px; align-items: center; font-size: 13px; }
+.hbar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hbar-track { height: 10px; background: var(--surface-3); position: relative; }
+.hbar-track i { position: absolute; inset: 0 auto 0 0; display: block; }
+.hbar-n { text-align: right; font-size: 12px; }
+@media (max-width: 760px) { .breakdowns { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 420px) { .topbar .brand { letter-spacing: 0.1em; font-size: 12px; padding-right: 10px; } }
+.cell-stack > .cell-value { justify-self: start; }
+.cell-chips { display: flex; flex-wrap: wrap; gap: 3px; }
+.cell-chips .cell-value { margin-bottom: 0; }
+.optgrid.multi button[aria-checked="true"]::before { content: "✓ "; }
+
+/* ---------- per-week target ---------- */
+.target-btn {
+  background: transparent; border: 0; padding: 0; cursor: pointer; font: inherit; color: inherit;
+  border-bottom: 1px dashed var(--line-strong);
+}
+.target-btn:hover { border-bottom-color: var(--accent); color: var(--text); }
+.target-btn .usual { color: var(--muted); text-decoration: line-through; margin-left: 4px; }
+.target-btn .off { color: var(--muted); }
+.adj-tag { font-family: var(--mono); font-size: 10px; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); padding: 0 4px; letter-spacing: 0.05em; }
+.stepper { display: grid; grid-template-columns: 52px 1fr 52px; border: 1px solid var(--line-strong); }
+.stepper .btn { height: 64px; border: 0; font-size: 22px; font-family: var(--mono); }
+.stepper .btn:first-child { border-right: 1px solid var(--line-strong); }
+.stepper .btn:last-child { border-left: 1px solid var(--line-strong); }
+.stepper-value { display: grid; place-items: center; align-content: center; gap: 2px; }
+.stepper-value .num { font-size: 30px; font-weight: 600; line-height: 1; }
+.dl-row button.dl-pts { background: transparent; border: 0; cursor: pointer; font: inherit; font-family: var(--mono); font-size: 12px; color: var(--text-2); }

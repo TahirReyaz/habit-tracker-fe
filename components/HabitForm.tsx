@@ -2,8 +2,17 @@
 
 import { useState } from "react";
 import type { HabitInput } from "@/lib/api";
-import { todayIso } from "@/lib/dates";
-import { PALETTE, type Habit, type HabitKind } from "@/lib/types";
+import { todayIso, weekStartOf } from "@/lib/dates";
+import { useSession } from "@/lib/session";
+import { PALETTE, type Habit, type HabitKind, type InputType } from "@/lib/types";
+
+type OptRow = { orig: string | null; text: string };
+
+const INPUTS: { v: InputType; label: string; hint: string }[] = [
+  { v: "CHECK", label: "Checkbox", hint: "Tick the day. You can still add a note." },
+  { v: "SELECT", label: "Dropdown", hint: "Pick one of your own options, e.g. Gym / Run / Swim. New options can also be created while logging." },
+  { v: "TEXT", label: "Text", hint: "Write what you did. Any text earns the point." },
+];
 
 export default function HabitForm({ initial, onSubmit, onCancel, submitLabel, nextColor }: {
   initial?: Habit;
@@ -15,10 +24,16 @@ export default function HabitForm({ initial, onSubmit, onCancel, submitLabel, ne
   const [name, setName] = useState(initial?.name ?? "");
   const [kind, setKind] = useState<HabitKind>(initial?.kind ?? "BUILD");
   const [target, setTarget] = useState(initial?.weeklyTarget ?? 3);
+  const [inputType, setInputType] = useState<InputType>(initial?.inputType ?? "CHECK");
+  const [multiSelect, setMultiSelect] = useState(initial?.multiSelect ?? false);
+  const [opts, setOpts] = useState<OptRow[]>((initial?.options ?? []).map((o) => ({ orig: o, text: o })));
+  const [newOpt, setNewOpt] = useState("");
   const [color, setColor] = useState(initial?.color ?? nextColor ?? PALETTE[0]);
   const [isPrivate, setPrivate] = useState(initial?.isPrivate ?? false);
   const [alias, setAlias] = useState(initial?.alias ?? "");
-  const [startDate, setStartDate] = useState(initial?.startDate ?? todayIso());
+  const { me } = useSession();
+  // new habits count from the start of this week, so days already logged this week score
+  const [startDate, setStartDate] = useState(initial?.startDate ?? weekStartOf(todayIso(), me.weekStart));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -28,9 +43,17 @@ export default function HabitForm({ initial, onSubmit, onCancel, submitLabel, ne
     setBusy(true);
     setErr(null);
     try {
-      await onSubmit({ name: name.trim(), kind, weeklyTarget: target, color, isPrivate, alias: alias.trim(), startDate });
+      const kept = opts.filter((o) => o.text.trim());
+      const optionRenames: Record<string, string> = {};
+      kept.forEach((o) => { if (o.orig && o.orig !== o.text.trim()) optionRenames[o.orig] = o.text.trim(); });
+      await onSubmit({
+        name: name.trim(), kind, inputType, weeklyTarget: target, color, isPrivate, alias: alias.trim(), startDate,
+        options: kept.map((o) => o.text.trim()),
+        optionRenames,
+        multiSelect: inputType === "SELECT" && multiSelect,
+      });
       if (!initial) {
-        setName(""); setAlias(""); setPrivate(false); setKind("BUILD"); setTarget(3);
+        setName(""); setAlias(""); setPrivate(false); setKind("BUILD"); setTarget(3); setInputType("CHECK"); setOpts([]); setMultiSelect(false);
       }
     } catch (e2) {
       setErr(e2 instanceof Error ? e2.message : "Could not save");
@@ -55,6 +78,55 @@ export default function HabitForm({ initial, onSubmit, onCancel, submitLabel, ne
         <span className="hint">{kind === "BUILD" ? "A day counts when you log it." : "A day counts unless you log a slip."}</span>
       </div>
 
+      <div className="field full">
+        <span className="label">Logged as</span>
+        <div className="seg" role="group" aria-label="Logged as">
+          {INPUTS.map((i) => (
+            <button type="button" key={i.v} aria-pressed={inputType === i.v} onClick={() => setInputType(i.v)}>{i.label}</button>
+          ))}
+        </div>
+        <span className="hint">{INPUTS.find((i) => i.v === inputType)!.hint}</span>
+      </div>
+
+      {inputType === "SELECT" && (
+        <div className="field full">
+          <label className="check" style={{ marginBottom: 6 }}>
+            <input type="checkbox" checked={multiSelect} onChange={(e) => setMultiSelect(e.target.checked)} />
+            <span>Multi-select — allow several options on the same day</span>
+          </label>
+          <span className="label">Options</span>
+          <div className="opt-editor">
+            {opts.map((o, i) => (
+              <div className="opt-row" key={i}>
+                <input className="input" value={o.text} maxLength={60} aria-label={`Option ${i + 1}`}
+                  onChange={(e) => setOpts(opts.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))} />
+                <button type="button" className="btn btn-sm" onClick={() => setOpts(opts.filter((_, j) => j !== i))} aria-label="Remove option">Remove</button>
+              </div>
+            ))}
+            <div className="opt-row">
+              <input className="input" value={newOpt} maxLength={60} placeholder="Add an option…"
+                onChange={(e) => setNewOpt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    const t = newOpt.trim();
+                    if (t && !opts.some((x) => x.text.trim().toLowerCase() === t.toLowerCase())) setOpts([...opts, { orig: null, text: t }]);
+                    setNewOpt("");
+                  }
+                }} />
+              <button type="button" className="btn btn-sm" disabled={!newOpt.trim()} onClick={() => {
+                const t = newOpt.trim();
+                if (t && !opts.some((x) => x.text.trim().toLowerCase() === t.toLowerCase())) setOpts([...opts, { orig: null, text: t }]);
+                setNewOpt("");
+              }}>Add</button>
+            </div>
+          </div>
+          <span className="hint">
+            {initial ? "Renaming an option also renames it on past days. Removing one keeps past days as they are." : "Optional — you can also start empty and create options while logging."}
+          </span>
+        </div>
+      )}
+
       <div className="field">
         <span className="label">Weekly target</span>
         <div className="seg" role="group" aria-label="Weekly target">
@@ -77,6 +149,7 @@ export default function HabitForm({ initial, onSubmit, onCancel, submitLabel, ne
       <div className="field">
         <label className="label" htmlFor="hs">Counting from</label>
         <input id="hs" type="date" className="input" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+        <span className="hint">Logging an earlier day moves this back automatically.</span>
       </div>
 
       <div className="field full" style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>

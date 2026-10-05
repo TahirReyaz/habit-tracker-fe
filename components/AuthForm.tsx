@@ -35,7 +35,7 @@ export default function AuthForm({ mode }: { mode: "login" | "register" }) {
     <div className="auth">
       <aside className="auth-side">
         <div className="brand" style={{ border: 0, padding: 0 }}>
-          <span className="brand-mark" /> TALLY
+          <span className="brand-mark" /> HABIT TRACKER
         </div>
         <div>
           <div className="auth-grid" aria-hidden>

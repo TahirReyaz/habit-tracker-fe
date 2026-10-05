@@ -1,4 +1,6 @@
 export type HabitKind = "BUILD" | "AVOID";
+/** CHECK = tick box, SELECT = pick from your own options, TEXT = free text. Any saved entry earns the point. */
+export type InputType = "CHECK" | "SELECT" | "TEXT";
 
 export interface Me {
   id: string;
@@ -15,6 +17,10 @@ export interface Habit {
   name: string;
   alias: string;
   kind: HabitKind;
+  inputType: InputType;
+  options: string[];
+  /** SELECT only: several options may be picked on the same day */
+  multiSelect: boolean;
   weeklyTarget: number;
   isPrivate: boolean;
   color: string;
@@ -26,6 +32,10 @@ export interface Habit {
 export interface Entry {
   habitId: string;
   date: string;
+  /** the text (TEXT) or the picked options newline-joined (SELECT); null for CHECK */
+  value: string | null;
+  /** SELECT: the picked options (one, or several for multi-select habits) */
+  values: string[];
   note: string | null;
 }
 
@@ -39,8 +49,11 @@ export interface HabitWeek {
   habitId: string;
   count: number;
   points: number;
+  /** target in force that week (may be overridden) */
   target: number;
   started: boolean;
+  /** the habit's usual weekly target */
+  baseTarget: number;
 }
 
 export interface Week {
@@ -54,6 +67,8 @@ export interface Week {
   scores: HabitWeek[];
   points: number;
   target: number;
+  /** habit id → this week's overridden target (absent = usual target; 0 = excused) */
+  targets: Record<string, number>;
 }
 
 export interface WeekScore {
@@ -105,6 +120,8 @@ export interface Stats {
 export interface StatsResponse {
   habits: Habit[];
   stats: Stats;
+  /** SELECT habit id → option → days picked in range (most used first) */
+  optionCounts: Record<string, Record<string, number>>;
 }
 
 export const PALETTE = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"];

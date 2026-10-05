@@ -47,7 +47,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
   return (
     <>
       <header className="topbar">
-        <Link href="/week" className="brand"><span className="brand-mark" />TALLY</Link>
+        <Link href="/week" className="brand"><span className="brand-mark" />HABIT TRACKER</Link>
         <nav className="nav">
           {NAV.map((n) => (
             <Link key={n.href} href={n.href} aria-current={path.startsWith(n.href) ? "page" : undefined}>{n.label}</Link>
@@ -82,7 +82,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
       {locked && (
         <div className="lock" role="dialog" aria-modal aria-label="Locked">
           <div className="lock-box">
-            <div className="brand" style={{ border: 0, padding: 0, justifyContent: "center" }}><span className="brand-mark" />TALLY</div>
+            <div className="brand" style={{ border: 0, padding: 0, justifyContent: "center" }}><span className="brand-mark" />HABIT TRACKER</div>
             <p className="dim" style={{ margin: "14px 0 0", fontSize: 13 }}>Enter PIN to continue</p>
             <PinPad onSubmit={unlock} />
           </div>
