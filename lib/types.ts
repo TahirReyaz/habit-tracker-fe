@@ -1,6 +1,9 @@
 export type HabitKind = "BUILD" | "AVOID";
-/** CHECK = tick box, SELECT = pick from your own options, TEXT = free text. Any saved entry earns the point. */
-export type InputType = "CHECK" | "SELECT" | "TEXT";
+/**
+ * CHECK = tick box, SELECT = pick from your own options, TEXT = free text — any saved entry earns the point.
+ * LIMIT = an amount with an allowed min and/or max — a day outside the range is −1, otherwise 0.
+ */
+export type InputType = "CHECK" | "SELECT" | "TEXT" | "LIMIT";
 
 export interface Me {
   id: string;
@@ -21,6 +24,10 @@ export interface Habit {
   options: string[];
   /** SELECT only: several options may be picked on the same day */
   multiSelect: boolean;
+  /** LIMIT only: allowed range (null = no bound) and display unit */
+  limitMin: number | null;
+  limitMax: number | null;
+  unit: string | null;
   weeklyTarget: number;
   isPrivate: boolean;
   color: string;
@@ -37,6 +44,8 @@ export interface Entry {
   /** SELECT: the picked options (one, or several for multi-select habits) */
   values: string[];
   note: string | null;
+  /** LIMIT only: the amount was outside the allowed range (−1) */
+  penalty: boolean;
 }
 
 export interface Day {
@@ -122,6 +131,40 @@ export interface StatsResponse {
   stats: Stats;
   /** SELECT habit id → option → days picked in range (most used first) */
   optionCounts: Record<string, Record<string, number>>;
+  /** LIMIT habit id → summary of logged amounts in range */
+  limitStats: Record<string, LimitStat>;
+}
+
+export interface LimitStat {
+  days: number;
+  avg: number | null;
+  lowest: number | null;
+  highest: number | null;
+  over: number;
+  under: number;
+}
+
+/** "≤ 120 min", "≥ 7 h", "6–9 h" */
+export function limitLabel(h: Pick<Habit, "limitMin" | "limitMax" | "unit">): string {
+  const u = h.unit ? ` ${h.unit}` : "";
+  if (h.limitMin != null && h.limitMax != null) return `${h.limitMin}–${h.limitMax}${u}`;
+  if (h.limitMax != null) return `≤ ${h.limitMax}${u}`;
+  if (h.limitMin != null) return `≥ ${h.limitMin}${u}`;
+  return "no limit set";
+}
+
+/** Same rule as the server: bounds are inclusive. */
+export function breaksLimit(h: Pick<Habit, "limitMin" | "limitMax">, amount: number): boolean {
+  return (h.limitMin != null && amount < h.limitMin) || (h.limitMax != null && amount > h.limitMax);
+}
+
+/** Accepts "90", "1.5", "1,5", "1 234"; null when it isn't a number. */
+export function parseAmount(raw: string): number | null {
+  let s = raw.trim().replace(/[\s\u00a0]/g, "");
+  if (/^-?\d+,\d+$/.test(s)) s = s.replace(",", ".");
+  if (!/^-?(\d+\.?\d*|\.\d+)$/.test(s)) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
 }
 
 export const PALETTE = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"];

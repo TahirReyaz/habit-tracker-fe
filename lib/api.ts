@@ -63,6 +63,11 @@ export interface HabitInput {
   /** old label → new label; rewrites past entries so history follows a renamed option */
   optionRenames?: Record<string, string>;
   multiSelect?: boolean;
+  /** LIMIT habits; with setLimits the three are applied as sent (null clears a bound) */
+  limitMin?: number | null;
+  limitMax?: number | null;
+  unit?: string | null;
+  setLimits?: boolean;
   weeklyTarget?: number;
   isPrivate?: boolean;
   color?: string;

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSession } from "@/lib/session";
 import type { LogPayload } from "@/lib/api";
-import type { Day, Entry, Habit } from "@/lib/types";
+import { breaksLimit, limitLabel, parseAmount, type Day, type Entry, type Habit } from "@/lib/types";
 import { dowName, fmtShort, isoDow } from "@/lib/dates";
 import { CloseIcon, PlusIcon } from "./Icons";
 
@@ -36,6 +36,8 @@ export default function CellEditor({ target, entry, day, isFuture, onClose, onSa
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
+  const amount = input === "LIMIT" ? parseAmount(value) : null;
   const hasHidden = discreet && Boolean(habit ? entry?.note || entry?.value : day?.note);
 
   function toggle(o: string) {
@@ -45,6 +47,7 @@ export default function CellEditor({ target, entry, day, isFuture, onClose, onSa
 
   useEffect(() => {
     if (!hasHidden && (input === "TEXT" || !habit)) textRef.current?.focus();
+    if (!hasHidden && input === "LIMIT") amountRef.current?.focus();
   }, [hasHidden, input, habit]);
 
   async function save() {
@@ -58,6 +61,10 @@ export default function CellEditor({ target, entry, day, isFuture, onClose, onSa
           await onSaveCell(habit, target.date, effectiveOn, { note });
         } else if (input === "SELECT") {
           await onSaveCell(habit, target.date, picked.length > 0, { values: picked, note });
+        } else if (input === "LIMIT") {
+          if (value.trim() && amount === null) throw new Error("Enter a number, e.g. 90 or 1.5");
+          // an empty amount clears the day (and any −1 it carried)
+          await onSaveCell(habit, target.date, amount !== null, { value: amount === null ? null : String(amount), note });
         } else {
           await onSaveCell(habit, target.date, value.trim().length > 0, { value: value.trim() || null });
         }
@@ -173,6 +180,32 @@ export default function CellEditor({ target, entry, day, isFuture, onClose, onSa
               </span>
               <NoteField hidden={hasHidden} hiddenBox={hiddenBox} note={note} setNote={setNote} disabled={disabled} label="Note (optional)" />
             </>
+          )}
+
+          {habit && input === "LIMIT" && (
+            <div className="field">
+              <label className="label" htmlFor="amt">Amount · allowed {limitLabel(habit)}</label>
+              {hasHidden ? hiddenBox : (
+                <div className="amount-row">
+                  <input id="amt" ref={amountRef} className="input amount-input" inputMode="decimal" autoComplete="off"
+                    placeholder="e.g. 90" value={value} disabled={disabled} onChange={(e) => setValue(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } }} />
+                  {habit.unit && <span className="amount-unit">{habit.unit}</span>}
+                </div>
+              )}
+              {!hasHidden && (
+                <div className={`verdict ${amount === null ? "" : breaksLimit(habit, amount) ? "bad" : "ok"}`} aria-live="polite">
+                  {amount === null
+                    ? value.trim() ? "Not a number" : "Leave empty for no entry (0)"
+                    : breaksLimit(habit, amount)
+                      ? habit.limitMax != null && amount > habit.limitMax
+                        ? `Over by ${+(amount - habit.limitMax).toFixed(2)}${habit.unit ? " " + habit.unit : ""} → −1`
+                        : `Under by ${+((habit.limitMin ?? 0) - amount).toFixed(2)}${habit.unit ? " " + habit.unit : ""} → −1`
+                      : "Within the limit → 0"}
+                </div>
+              )}
+              <NoteField hidden={hasHidden} hiddenBox={hiddenBox} note={note} setNote={setNote} disabled={disabled} label="Note (optional)" />
+            </div>
           )}
 
           {habit && input === "TEXT" && (

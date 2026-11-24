@@ -5,7 +5,7 @@ import { Heatmap, Spark, WeekdayBars, WeeklyBars } from "@/components/Charts";
 import { api } from "@/lib/api";
 import { addDays, dowName, fmtRange, pct, todayIso } from "@/lib/dates";
 import { useSession } from "@/lib/session";
-import type { Habit, HabitStats, StatsResponse } from "@/lib/types";
+import { limitLabel, type Habit, type HabitStats, type StatsResponse } from "@/lib/types";
 
 const RANGES = [4, 12, 26, 52];
 
@@ -138,20 +138,32 @@ export default function StatsPage() {
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <i className="swatch" style={{ background: colorOf(h) }} />
                           <span>{label(h)}</span>
-                          {h.kind === "AVOID" && <span className="avoid-tag">AVOID</span>}
+                          {h.kind === "AVOID" && h.inputType !== "LIMIT" && <span className="avoid-tag">AVOID</span>}
+                          {h.inputType === "LIMIT" && <span className="avoid-tag">LIMIT</span>}
                           {h.archived && <span className="avoid-tag">ARCHIVED</span>}
                         </div>
                       </td>
                       <td className="r num">{s.weeksHit}/{s.weeksCounted} <span className="muted">{s.weeksCounted ? pct(s.hitRate) : ""}</span></td>
-                      <td className="r num">{s.avgPerWeek.toFixed(1)}<span className="muted">/{h.weeklyTarget}</span></td>
-                      <td className="r num hide-md" title={h.kind === "AVOID" ? "clean days" : "logged days"}>{s.totalDays}</td>
+                      {h.inputType === "LIMIT" ? (
+                        <td className="r num" title="average −1 marks per week" style={{ color: s.avgPerWeek < 0 ? "var(--bad)" : undefined }}>
+                          {s.avgPerWeek === 0 ? "0" : s.avgPerWeek.toFixed(1)}<span className="muted"> marks</span>
+                        </td>
+                      ) : (
+                        <td className="r num">{s.avgPerWeek.toFixed(1)}<span className="muted">/{h.weeklyTarget}</span></td>
+                      )}
+                      <td className="r num hide-md" title={h.kind === "AVOID" && h.inputType !== "LIMIT" ? "clean days" : "logged days"}>{s.totalDays}</td>
                       <td className="r num">{s.currentWeekStreak}w</td>
                       <td className="r num hide-md">{s.longestWeekStreak}w</td>
                       {view === "chart" ? (
                         <>
-                          <td className="hide-md"><Spark values={s.weekly} target={h.weeklyTarget} color={colorOf(h)} /></td>
-                          <td className="hide-md" title={h.kind === "AVOID" ? "slips by weekday" : "logs by weekday"}>
-                            <WeekdayBars counts={s.weekday} weekStart={me.weekStart} color={h.kind === "AVOID" ? "var(--bad)" : colorOf(h)} />
+                          <td className="hide-md">
+                            {h.inputType === "LIMIT"
+                              /* −1 marks per week as red bars; an empty week = within the limit */
+                              ? <Spark values={s.weekly.map((v) => -v)} target={1} color="var(--bad)" />
+                              : <Spark values={s.weekly} target={h.weeklyTarget} color={colorOf(h)} />}
+                          </td>
+                          <td className="hide-md" title={h.inputType === "LIMIT" ? "days outside the limit, by weekday" : h.kind === "AVOID" ? "slips by weekday" : "logs by weekday"}>
+                            <WeekdayBars counts={s.weekday} weekStart={me.weekStart} color={h.kind === "AVOID" || h.inputType === "LIMIT" ? "var(--bad)" : colorOf(h)} />
                           </td>
                         </>
                       ) : (
@@ -165,8 +177,44 @@ export default function StatsPage() {
             <p className="hint" style={{ marginTop: 8 }}>
               Weeks hit counts finished weeks (plus this week once its target is reached). Streak = consecutive weeks on target.
               For AVOID habits, days = clean days and weekday bars show when slips happen.
+              For LIMIT habits, a week is hit when no day went outside the range; marks are −1 days per week.
             </p>
           </div>
+
+          {rows.some(({ h }) => h.inputType === "LIMIT" && (data.limitStats?.[h.id]?.days ?? 0) > 0) && (
+            <div className="section">
+              <div className="section-head">
+                <h2 className="h2">Limits</h2>
+                <span className="label">logged amounts in range</span>
+              </div>
+              <div className="limits">
+                {rows.filter(({ h }) => h.inputType === "LIMIT" && (data.limitStats?.[h.id]?.days ?? 0) > 0).map(({ h }) => {
+                  const ls = data.limitStats[h.id];
+                  const u = h.unit ? ` ${h.unit}` : "";
+                  const breaches = ls.over + ls.under;
+                  const hide = discreet && h.isPrivate;
+                  return (
+                    <div className="card limit-card" key={h.id}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                        <i className="swatch" style={{ background: colorOf(h) }} />
+                        <span style={{ fontWeight: 600 }}>{label(h)}</span>
+                        {!hide && <span className="limit-tag" style={{ marginLeft: "auto" }}>{limitLabel(h)}</span>}
+                      </div>
+                      <div className="label">Average per logged day</div>
+                      <div className="big">{hide || ls.avg == null ? "•••" : `${+ls.avg.toFixed(2)}${u}`}</div>
+                      <div style={{ marginTop: 10 }}>
+                        <div className="row"><span className="dim">Days logged</span><span className="num">{ls.days}</span></div>
+                        <div className="row"><span className="dim">Within the limit</span><span className="num">{ls.days - breaches} <span className="muted">{ls.days ? pct((ls.days - breaches) / ls.days) : ""}</span></span></div>
+                        {h.limitMax != null && <div className="row"><span className="dim">Over the max</span><span className="num" style={{ color: ls.over ? "var(--bad)" : undefined }}>{ls.over}</span></div>}
+                        {h.limitMin != null && <div className="row"><span className="dim">Under the min</span><span className="num" style={{ color: ls.under ? "var(--bad)" : undefined }}>{ls.under}</span></div>}
+                        {!hide && <div className="row"><span className="dim">Lowest / highest</span><span className="num">{ls.lowest}{u} / {ls.highest}{u}</span></div>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {rows.some(({ h }) => h.inputType === "SELECT" && Object.keys(data.optionCounts?.[h.id] ?? {}).length > 0) && (
             <div className="section">
@@ -222,7 +270,7 @@ function buildInsights(data: StatsResponse, rows: { h: Habit; s: HabitStats }[],
   const out: string[] = [];
   const st = data.stats;
   const today = todayIso();
-  const counted = rows.filter((r) => r.s.weeksCounted >= 2 && !r.h.archived);
+  const counted = rows.filter((r) => r.s.weeksCounted >= 2 && !r.h.archived && r.h.inputType !== "LIMIT");
 
   if (counted.length) {
     const best = [...counted].sort((a, b) => b.s.hitRate - a.s.hitRate || b.s.avgPerWeek - a.s.avgPerWeek)[0];
@@ -249,7 +297,7 @@ function buildInsights(data: StatsResponse, rows: { h: Habit; s: HabitStats }[],
   }
 
   // weekday patterns across BUILD habits
-  const build = rows.filter((r) => r.h.kind === "BUILD");
+  const build = rows.filter((r) => r.h.kind === "BUILD" && r.h.inputType !== "LIMIT");
   if (build.length) {
     const sum = [0, 0, 0, 0, 0, 0, 0];
     build.forEach((r) => r.s.weekday.forEach((v, i) => (sum[i] += v)));
@@ -261,7 +309,21 @@ function buildInsights(data: StatsResponse, rows: { h: Habit; s: HabitStats }[],
   }
 
   // slips cluster
-  rows.filter((r) => r.h.kind === "AVOID").forEach((r) => {
+  // limits: how often the range was broken, and on which weekday
+  rows.filter((r) => r.h.inputType === "LIMIT" && !r.h.archived).forEach((r) => {
+    const ls = data.limitStats?.[r.h.id];
+    if (!ls || ls.days < 5) return;
+    const breaches = ls.over + ls.under;
+    if (breaches === 0) {
+      out.push(`${label(r.h)}: within the limit on all ${ls.days} logged days.`);
+    } else {
+      const d = r.s.weekday.indexOf(Math.max(...r.s.weekday));
+      const avg = r.h.isPrivate || ls.avg == null ? "" : ` (average ${+ls.avg.toFixed(1)}${r.h.unit ? " " + r.h.unit : ""})`;
+      out.push(`${label(r.h)}: outside the limit on ${breaches} of ${ls.days} days${avg}, most often on ${dowName(d)}s.`);
+    }
+  });
+
+  rows.filter((r) => r.h.kind === "AVOID" && r.h.inputType !== "LIMIT").forEach((r) => {
     const slips = r.s.weekday.reduce((a, b) => a + b, 0);
     if (slips >= 3) {
       const d = r.s.weekday.indexOf(Math.max(...r.s.weekday));

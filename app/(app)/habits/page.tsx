@@ -5,7 +5,7 @@ import HabitForm from "@/components/HabitForm";
 import { api } from "@/lib/api";
 import { fmtShort } from "@/lib/dates";
 import { useSession } from "@/lib/session";
-import { PALETTE, type Habit } from "@/lib/types";
+import { PALETTE, limitLabel, type Habit } from "@/lib/types";
 
 export default function HabitsPage() {
   const { label, colorOf, discreet } = useSession();
@@ -22,7 +22,8 @@ export default function HabitsPage() {
 
   const active = habits.filter((h) => !h.archived);
   const archived = habits.filter((h) => h.archived);
-  const totalTarget = active.reduce((a, h) => a + h.weeklyTarget, 0);
+  // LIMIT habits only take points away, so they add nothing to what can be earned
+  const totalTarget = active.reduce((a, h) => a + (h.inputType === "LIMIT" ? 0 : h.weeklyTarget), 0);
 
   async function move(id: string, dir: -1 | 1) {
     const ids = active.map((h) => h.id);
@@ -55,11 +56,14 @@ export default function HabitsPage() {
             <i className="swatch" style={{ background: colorOf(h), width: 10, height: 10 }} />
             <span style={{ fontWeight: 500 }}>{label(h)}</span>
             {h.isPrivate && <span className="avoid-tag">PRIVATE</span>}
-            {h.kind === "AVOID" && <span className="avoid-tag">AVOID</span>}
+            {h.kind === "AVOID" && h.inputType !== "LIMIT" && <span className="avoid-tag">AVOID</span>}
+            {h.inputType === "LIMIT" && <span className="avoid-tag">LIMIT</span>}
           </div>
           <div className="meta">
-            <span>{h.weeklyTarget}/wk</span>
-            <span>{h.inputType === "CHECK" ? "checkbox" : h.inputType === "TEXT" ? "text" : `${h.multiSelect ? "multi-select" : "dropdown"} · ${h.options.length} option${h.options.length === 1 ? "" : "s"}`}</span>
+            {h.inputType === "LIMIT"
+              ? <span>{discreet && h.isPrivate ? "limit" : `allowed ${limitLabel(h)}`} · out of range = −1</span>
+              : <span>{h.weeklyTarget}/wk</span>}
+            <span>{h.inputType === "CHECK" ? "checkbox" : h.inputType === "TEXT" ? "text" : h.inputType === "LIMIT" ? "amount" : `${h.multiSelect ? "multi-select" : "dropdown"} · ${h.options.length} option${h.options.length === 1 ? "" : "s"}`}</span>
             <span>since {fmtShort(h.startDate)}</span>
             {h.isPrivate && !discreet && <span>shown as “{h.alias}”</span>}
           </div>

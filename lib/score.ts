@@ -15,10 +15,16 @@ export function scoreWeek(habits: Habit[], entries: Entry[], start: string, toda
   const scores: HabitWeek[] = habits.map((h) => {
     const days = by.get(h.id) ?? new Set<string>();
     const started = h.startDate <= end;
-    const target = targets[h.id] ?? h.weeklyTarget;
+    const limit = h.inputType === "LIMIT";
+    // LIMIT habits have no target: each out-of-range day is −1, everything else 0
+    const target = limit ? 0 : targets[h.id] ?? h.weeklyTarget;
     let count = 0, pts = 0;
     if (started) {
-      if (h.kind === "BUILD") {
+      if (limit) {
+        const mine = entries.filter((e) => e.habitId === h.id && e.date >= start && e.date <= end && e.date >= h.startDate);
+        count = mine.length;
+        pts = -mine.filter((e) => e.penalty).length;
+      } else if (h.kind === "BUILD") {
         count = [...days].filter((d) => d >= h.startDate).length;
         pts = Math.min(count, target);
       } else {
@@ -35,7 +41,7 @@ export function scoreWeek(habits: Habit[], entries: Entry[], start: string, toda
       points += pts;
       total += target;
     }
-    return { habitId: h.id, count, points: pts, target, started, baseTarget: h.weeklyTarget };
+    return { habitId: h.id, count, points: pts, target, started, baseTarget: limit ? 0 : h.weeklyTarget };
   });
   return { scores, points, target: total };
 }

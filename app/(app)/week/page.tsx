@@ -10,7 +10,7 @@ import { api, type LogPayload } from "@/lib/api";
 import { addDays, dowShort, fmtRange, parseIso, weekNumber } from "@/lib/dates";
 import { scoreWeek } from "@/lib/score";
 import { useSession } from "@/lib/session";
-import type { Entry, Habit, Week } from "@/lib/types";
+import { breaksLimit, limitLabel, parseAmount, type Entry, type Habit, type Week } from "@/lib/types";
 
 export default function WeekPage() {
   return (
@@ -71,10 +71,12 @@ function WeekView() {
     const prev = week;
     const others = week.entries.filter((e) => !(e.habitId === habit.id && e.date === date));
     const values = p.values ?? [];
+    const amount = habit.inputType === "LIMIT" && p.value ? parseAmount(p.value) : null;
     const optimistic = {
       habitId: habit.id, date,
       value: habit.inputType === "SELECT" ? values.join("\n") || null : p.value?.trim() || null,
       values, note: p.note?.trim() || null,
+      penalty: amount !== null && breaksLimit(habit, amount),
     };
     setWeek({
       ...week,
@@ -206,13 +208,20 @@ function WeekView() {
                             <span style={{ fontFamily: "var(--sans), var(--jp)" }}>{label(h)}</span>
                           </div>
                           <div className="hhead-meta">
-                            <TargetButton s={s} hit={hit} onClick={() => setTargetFor(h)} />
+                            {h.inputType === "LIMIT"
+                              ? <LimitScore s={s} />
+                              : <TargetButton s={s} hit={hit} onClick={() => setTargetFor(h)} />}
                             <span style={{ display: "flex", gap: 4 }}>
+                              {h.inputType === "LIMIT" && <span className="limit-tag" title="Allowed range">{limitLabel(h)}</span>}
                               {s.target !== s.baseTarget && <span className="adj-tag" title="Target changed for this week">ADJ</span>}
-                              {h.kind === "AVOID" && <span className="avoid-tag">AVOID</span>}
+                              {h.kind === "AVOID" && h.inputType !== "LIMIT" && <span className="avoid-tag">AVOID</span>}
                             </span>
                           </div>
-                          <div className="progress"><i style={{ width: `${s.target ? (s.points / s.target) * 100 : 0}%`, background: colorOf(h) }} /></div>
+                          <div className="progress">
+                            {h.inputType === "LIMIT"
+                              ? <i style={{ width: `${Math.min(7, -s.points) / 7 * 100}%`, background: "var(--bad)" }} />
+                              : <i style={{ width: `${s.target ? (s.points / s.target) * 100 : 0}%`, background: colorOf(h) }} />}
+                          </div>
                         </div>
                       </th>
                     );
@@ -223,7 +232,7 @@ function WeekView() {
               <tbody>
                 {week.days.map((day, r) => {
                   const future = day.date > week.today;
-                  const doneCount = week.habits.filter((h) => h.kind === "BUILD" && entries.has(key(h.id, day.date))).length;
+                  const doneCount = week.habits.filter((h) => h.kind === "BUILD" && h.inputType !== "LIMIT" && entries.has(key(h.id, day.date))).length;
                   return (
                     <tr key={day.date} className={`${day.date === week.today ? "is-today" : ""} ${future ? "is-future" : ""} ${day.restDay ? "is-rest" : ""}`}>
                       <td className="daycell" onClick={() => setEdit({ type: "day", date: day.date })}>
@@ -239,7 +248,7 @@ function WeekView() {
                         const on = Boolean(e);
                         const color = colorOf(h);
                         return (
-                          <td key={h.id} className={`cell ${on ? "on" : ""}`} style={{ ["--hc" as string]: color }}>
+                          <td key={h.id} className={`cell ${on ? "on" : ""} ${e?.penalty ? "penalty" : ""}`} style={{ ["--hc" as string]: color }}>
                             <button
                               className="cell-btn"
                               data-r={r}
@@ -249,8 +258,8 @@ function WeekView() {
                               aria-label={`${label(h)}, ${day.date}, ${on ? (h.kind === "AVOID" ? "slipped" : "done") : "empty"}`}
                             >
                               <span
-                                className={`tick ${on ? "on" : ""} ${h.kind === "AVOID" ? "slip" : ""} ${h.inputType !== "CHECK" ? "tick-" + h.inputType.toLowerCase() : ""}`}
-                                style={on ? { background: color } : undefined}
+                                className={`tick ${on ? "on" : ""} ${e?.penalty ? "bad" : ""} ${h.kind === "AVOID" && h.inputType !== "LIMIT" ? "slip" : ""} ${h.inputType !== "CHECK" ? "tick-" + h.inputType.toLowerCase() : ""}`}
+                                style={on ? { background: e?.penalty ? "var(--bad)" : color } : undefined}
                                 onClick={(ev) => {
                                   ev.stopPropagation();
                                   if (!future) quickToggle(h, day.date);
@@ -272,8 +281,8 @@ function WeekView() {
                   {week.habits.map((h) => {
                     const s = sc(h.id);
                     return (
-                      <td key={h.id} className={s.target > 0 && s.points >= s.target ? "" : "dim"}>
-                        <TargetButton s={s} hit={false} onClick={() => setTargetFor(h)} />
+                      <td key={h.id} className={h.inputType === "LIMIT" || (s.target > 0 && s.points >= s.target) ? "" : "dim"}>
+                        {h.inputType === "LIMIT" ? <LimitScore s={s} /> : <TargetButton s={s} hit={false} onClick={() => setTargetFor(h)} />}
                       </td>
                     );
                   })}
@@ -283,7 +292,7 @@ function WeekView() {
             </table>
           </div>
           <p className="hint hide-sm" style={{ marginTop: 10 }}>
-            Click a column&apos;s x/target to change that target for this week only (holidays) · Click a square to tick · click a cell to pick an option, write text or add a note · <span className="kbd">←</span><span className="kbd">→</span><span className="kbd">↑</span><span className="kbd">↓</span> move · <span className="kbd">Space</span> tick · <span className="kbd">\</span> discreet · <span className="kbd">Esc</span><span className="kbd">Esc</span> panic
+            Click a column&apos;s x/target to change that target for this week only (holidays) · Limit columns: enter the amount, a day outside the range is −1 · Click a square to tick · click a cell to pick an option, write text or add a note · <span className="kbd">←</span><span className="kbd">→</span><span className="kbd">↑</span><span className="kbd">↓</span> move · <span className="kbd">Space</span> tick · <span className="kbd">\</span> discreet · <span className="kbd">Esc</span><span className="kbd">Esc</span> panic
           </p>
 
           {/* mobile day view */}
@@ -337,7 +346,7 @@ function MobileDay(props: {
   day: string;
   setDay: (d: string) => void;
   entries: Map<string, Entry>;
-  scores: { habitId: string; points: number; target: number; baseTarget: number }[];
+  scores: { habitId: string; points: number; target: number; baseTarget: number; count: number }[];
   onToggle: (h: Habit, date: string) => void;
   onOpen: (h: Habit) => void;
   onOpenDay: () => void;
@@ -347,13 +356,13 @@ function MobileDay(props: {
   const { label, colorOf, discreet } = useSession();
   const future = day > week.today;
   const meta = week.days.find((x) => x.date === day);
-  const buildCount = week.habits.filter((h) => h.kind === "BUILD").length || 1;
+  const buildCount = week.habits.filter((h) => h.kind === "BUILD" && h.inputType !== "LIMIT").length || 1;
 
   return (
     <div>
       <div className="daystrip">
         {week.days.map((x) => {
-          const n = week.habits.filter((h) => h.kind === "BUILD" && entries.has(key(h.id, x.date))).length;
+          const n = week.habits.filter((h) => h.kind === "BUILD" && h.inputType !== "LIMIT" && entries.has(key(h.id, x.date))).length;
           return (
             <button key={x.date} aria-pressed={x.date === day} className={x.date === week.today ? "today" : ""} onClick={() => setDay(x.date)}>
               <span className="ds-dow">{dowShort(x.date)}</span>
@@ -374,24 +383,29 @@ function MobileDay(props: {
           const s = scores.find((x) => x.habitId === h.id)!;
           const color = colorOf(h);
           return (
-            <div key={h.id} className={`dl-row ${on ? "on" : ""}`} style={{ ["--hc" as string]: color }}>
+            <div key={h.id} className={`dl-row ${on ? "on" : ""} ${e?.penalty ? "penalty" : ""}`} style={{ ["--hc" as string]: color }}>
               <button className="dl-tick" disabled={future} onClick={() => onToggle(h, day)} aria-label={`Toggle ${label(h)}`}>
-                <span className={`tick ${on ? "on" : ""} ${h.kind === "AVOID" ? "slip" : ""} ${h.inputType !== "CHECK" ? "tick-" + h.inputType.toLowerCase() : ""}`} style={on ? { background: color } : undefined} />
+                <span className={`tick ${on ? "on" : ""} ${e?.penalty ? "bad" : ""} ${h.kind === "AVOID" && h.inputType !== "LIMIT" ? "slip" : ""} ${h.inputType !== "CHECK" ? "tick-" + h.inputType.toLowerCase() : ""}`} style={on ? { background: e?.penalty ? "var(--bad)" : color } : undefined} />
               </button>
               <button className="dl-main" disabled={future} onClick={() => onOpen(h)}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <i className="swatch" style={{ background: color }} />
                   <span style={{ fontWeight: 500 }}>{label(h)}</span>
-                  {h.kind === "AVOID" && <span className="avoid-tag">AVOID</span>}
+                  {h.kind === "AVOID" && h.inputType !== "LIMIT" && <span className="avoid-tag">AVOID</span>}
+                  {h.inputType === "LIMIT" && <span className="limit-tag">{limitLabel(h)}</span>}
                 </div>
                 {e && (e.value || e.note) && (
                   <div style={{ marginTop: 5 }}><CellContent entry={e} habit={h} discreet={discreet} /></div>
                 )}
               </button>
-              <button className="dl-pts" onClick={() => onTarget(h)} aria-label={`Change ${label(h)}'s target for this week`}>
-                {s.target === 0 ? <span className="muted">off</span> : <>{s.points}/{s.target}</>}
-                {s.target !== s.baseTarget && <span className="adj-tag" style={{ marginLeft: 4 }}>ADJ</span>}
-              </button>
+              {h.inputType === "LIMIT" ? (
+                <div className="dl-pts"><LimitScore s={s} /></div>
+              ) : (
+                <button className="dl-pts" onClick={() => onTarget(h)} aria-label={`Change ${label(h)}'s target for this week`}>
+                  {s.target === 0 ? <span className="muted">off</span> : <>{s.points}/{s.target}</>}
+                  {s.target !== s.baseTarget && <span className="adj-tag" style={{ marginLeft: 4 }}>ADJ</span>}
+                </button>
+              )}
             </div>
           );
         })}
@@ -400,7 +414,7 @@ function MobileDay(props: {
   );
 }
 
-/** What a filled cell shows: the option chip (SELECT), the text (TEXT) and/or the note. */
+/** What a filled cell shows: the option chip (SELECT), the text (TEXT), the amount (LIMIT) and/or the note. */
 function CellContent({ entry, habit, discreet }: { entry?: Entry; habit: Habit; discreet: boolean }) {
   if (!entry || (!entry.value && !entry.note)) return <span />;
   if (discreet) return <span className="cell-note redacted" aria-label="hidden" />;
@@ -410,9 +424,22 @@ function CellContent({ entry, habit, discreet }: { entry?: Entry; habit: Habit; 
         <span className="cell-chips">{entry.values.map((v) => <span className="cell-value" key={v}>{v}</span>)}</span>
       )}
       {entry.value && habit.inputType === "TEXT" && <span className="cell-note">{entry.value}</span>}
+      {entry.value && habit.inputType === "LIMIT" && (
+        <span className={`cell-amount ${entry.penalty ? "bad" : ""}`}>
+          {entry.value}{habit.unit && <span className="u">{habit.unit}</span>}
+          {entry.penalty && <span className="pen-mark">−1</span>}
+        </span>
+      )}
       {entry.note && <span className={`cell-note ${entry.value ? "dim" : ""}`}>{entry.note}</span>}
     </span>
   );
+}
+
+/** A LIMIT column's week: "−2" when the limit was broken twice, "0 ✓" when it never was. */
+function LimitScore({ s }: { s: { points: number; count: number } }) {
+  return s.points < 0
+    ? <span className="limit-score bad" title={`${-s.points} day${s.points === -1 ? "" : "s"} outside the limit`}>−{-s.points}</span>
+    : <span className="limit-score" title="No day outside the limit">0{s.count > 0 ? " ✓" : ""}</span>;
 }
 
 /** "3/4" in a column header/footer; click to change this week's target. Shows the usual target struck through when adjusted. */

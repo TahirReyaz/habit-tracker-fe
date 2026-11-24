@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { HabitInput } from "@/lib/api";
 import { todayIso, weekStartOf } from "@/lib/dates";
 import { useSession } from "@/lib/session";
-import { PALETTE, type Habit, type HabitKind, type InputType } from "@/lib/types";
+import { PALETTE, limitLabel, parseAmount, type Habit, type HabitKind, type InputType } from "@/lib/types";
 
 type OptRow = { orig: string | null; text: string };
 
@@ -12,6 +12,7 @@ const INPUTS: { v: InputType; label: string; hint: string }[] = [
   { v: "CHECK", label: "Checkbox", hint: "Tick the day. You can still add a note." },
   { v: "SELECT", label: "Dropdown", hint: "Pick one of your own options, e.g. Gym / Run / Swim. New options can also be created while logging." },
   { v: "TEXT", label: "Text", hint: "Write what you did. Any text earns the point." },
+  { v: "LIMIT", label: "Limit", hint: "Enter an amount each day, e.g. minutes of screen time. A day above the max or below the min is −1, otherwise 0. No target, no points to earn." },
 ];
 
 export default function HabitForm({ initial, onSubmit, onCancel, submitLabel, nextColor }: {
@@ -28,6 +29,10 @@ export default function HabitForm({ initial, onSubmit, onCancel, submitLabel, ne
   const [multiSelect, setMultiSelect] = useState(initial?.multiSelect ?? false);
   const [opts, setOpts] = useState<OptRow[]>((initial?.options ?? []).map((o) => ({ orig: o, text: o })));
   const [newOpt, setNewOpt] = useState("");
+  const [limitMin, setLimitMin] = useState(initial?.limitMin != null ? String(initial.limitMin) : "");
+  const [limitMax, setLimitMax] = useState(initial?.limitMax != null ? String(initial.limitMax) : "");
+  const [unit, setUnit] = useState(initial?.unit ?? "");
+  const isLimit = inputType === "LIMIT";
   const [color, setColor] = useState(initial?.color ?? nextColor ?? PALETTE[0]);
   const [isPrivate, setPrivate] = useState(initial?.isPrivate ?? false);
   const [alias, setAlias] = useState(initial?.alias ?? "");
@@ -40,6 +45,13 @@ export default function HabitForm({ initial, onSubmit, onCancel, submitLabel, ne
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return setErr("Give it a name");
+    const min = limitMin.trim() ? parseAmount(limitMin) : null;
+    const max = limitMax.trim() ? parseAmount(limitMax) : null;
+    if (isLimit) {
+      if ((limitMin.trim() && min === null) || (limitMax.trim() && max === null)) return setErr("Limits must be numbers");
+      if (min === null && max === null) return setErr("Set a minimum, a maximum, or both");
+      if (min !== null && max !== null && min > max) return setErr("The minimum can't be above the maximum");
+    }
     setBusy(true);
     setErr(null);
     try {
@@ -51,9 +63,10 @@ export default function HabitForm({ initial, onSubmit, onCancel, submitLabel, ne
         options: kept.map((o) => o.text.trim()),
         optionRenames,
         multiSelect: inputType === "SELECT" && multiSelect,
+        ...(isLimit ? { limitMin: min, limitMax: max, unit: unit.trim() || null, setLimits: true, kind: "BUILD" as const } : {}),
       });
       if (!initial) {
-        setName(""); setAlias(""); setPrivate(false); setKind("BUILD"); setTarget(3); setInputType("CHECK"); setOpts([]); setMultiSelect(false);
+        setName(""); setAlias(""); setPrivate(false); setKind("BUILD"); setTarget(3); setInputType("CHECK"); setOpts([]); setMultiSelect(false); setLimitMin(""); setLimitMax(""); setUnit("");
       }
     } catch (e2) {
       setErr(e2 instanceof Error ? e2.message : "Could not save");
@@ -69,14 +82,14 @@ export default function HabitForm({ initial, onSubmit, onCancel, submitLabel, ne
         <input id="hn" className="input" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder="e.g. 日本語勉強, Coding, 筋トレ" autoComplete="off" />
       </div>
 
-      <div className="field">
+      {!isLimit && <div className="field">
         <span className="label">Type</span>
         <div className="seg" role="group" aria-label="Type">
           <button type="button" aria-pressed={kind === "BUILD"} onClick={() => setKind("BUILD")}>Build — do it</button>
           <button type="button" aria-pressed={kind === "AVOID"} onClick={() => { setKind("AVOID"); setTarget(7); }}>Avoid — don&apos;t</button>
         </div>
         <span className="hint">{kind === "BUILD" ? "A day counts when you log it." : "A day counts unless you log a slip."}</span>
-      </div>
+      </div>}
 
       <div className="field full">
         <span className="label">Logged as</span>
@@ -127,7 +140,32 @@ export default function HabitForm({ initial, onSubmit, onCancel, submitLabel, ne
         </div>
       )}
 
-      <div className="field">
+      {isLimit && (
+        <div className="field full">
+          <span className="label">Allowed range</span>
+          <div className="limit-fields">
+            <label>
+              <span className="hint">Minimum</span>
+              <input className="input" inputMode="decimal" placeholder="none" value={limitMin} onChange={(e) => setLimitMin(e.target.value)} aria-label="Minimum" />
+            </label>
+            <label>
+              <span className="hint">Maximum</span>
+              <input className="input" inputMode="decimal" placeholder="none" value={limitMax} onChange={(e) => setLimitMax(e.target.value)} aria-label="Maximum" />
+            </label>
+            <label>
+              <span className="hint">Unit (optional)</span>
+              <input className="input" maxLength={16} placeholder="min, h, cups…" value={unit} onChange={(e) => setUnit(e.target.value)} aria-label="Unit" />
+            </label>
+          </div>
+          <span className="hint">
+            Fill one or both. Bounds are allowed values: max 120 means 120 is fine and 121 is −1.
+            {(limitMin.trim() || limitMax.trim()) && <> Now: <b>{limitLabel({ limitMin: parseAmount(limitMin), limitMax: parseAmount(limitMax), unit: unit.trim() || null })}</b>.</>}
+            {initial?.inputType === "LIMIT" && " Changing the range re-scores past days."}
+          </span>
+        </div>
+      )}
+
+      {!isLimit && <div className="field">
         <span className="label">Weekly target</span>
         <div className="seg" role="group" aria-label="Weekly target">
           {[1, 2, 3, 4, 5, 6, 7].map((n) => (
@@ -135,7 +173,7 @@ export default function HabitForm({ initial, onSubmit, onCancel, submitLabel, ne
           ))}
         </div>
         <span className="hint">{target} point{target > 1 ? "s" : ""} available per week.</span>
-      </div>
+      </div>}
 
       <div className="field">
         <span className="label">Colour</span>
